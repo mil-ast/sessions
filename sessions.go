@@ -1,7 +1,6 @@
 package sessions
 
 import (
-	"errors"
 	"net/http"
 	"time"
 )
@@ -14,11 +13,8 @@ var (
 func init() {
 	ticker := time.NewTicker(time.Minute)
 	go func() {
-		var time_now time.Time
-
 		for {
-			time_now = <-ticker.C
-			registry.remove_old(time_now)
+			registry.remove_old(<-ticker.C)
 		}
 	}()
 }
@@ -38,74 +34,47 @@ func SetSid(name string) string {
 
 	return sid
 }
+func GetSid() string {
+	return sid
+}
 
 /*
 	получить актуальную сессию
 */
-func Get(w http.ResponseWriter, r *http.Request) (*Session, error) {
+func Get(w http.ResponseWriter, r *http.Request) *Session {
 	var (
-		ses *Session
-		err error
+		err    error
+		cookie *http.Cookie
+		ses    *Session
+		ok     bool
+		ses_id string
 	)
 
-	cookie, err := r.Cookie(sid)
+	cookie, err = r.Cookie(sid)
 	if err != nil {
-		// нет куки, поэтому создаем новую сессию
-		return sessionStart(w, "")
-	} else {
-		ses, err = registry.get(cookie.Value)
+		ses_id, ses = registry.new()
 
-		if err != nil {
-			// если сессии нет, то создадим новую
-			return sessionStart(w, cookie.Value)
-		} else if !ses.is_actual(time.Now()) {
-			// если сессия устарела, то очистим и создадим новую
-			registry.delete(cookie.Value)
-			return sessionStart(w, "")
-		}
-
-		// существует актуальная сессия. Обновим время актуальности
-		ses.update_last_time()
-
-		cookie.MaxAge = int(maxlifetime.Seconds())
-		//cookie
+		cookie = &http.Cookie{Name: sid, Value: ses_id, Path: "/", HttpOnly: true, MaxAge: int(maxlifetime.Seconds())}
 		http.SetCookie(w, cookie)
 
-		return ses, nil
-	}
-}
-
-/*
-	новая сессия
-*/
-func sessionStart(w http.ResponseWriter, ses_id string) (*Session, error) {
-	session := &Session{
-		values:    make(map[string]interface{}),
-		last_time: time.Now(),
+		return ses
 	}
 
-	if ses_id == "" {
-		var err error
+	ses, ok = registry.get(cookie.Value)
+	if !ok {
+		ses = registry.create(cookie.Value)
 
-		for i := 0; i < 100; i++ {
-			ses_id = registry.create_ses_id()
+		cookie.MaxAge = int(maxlifetime.Seconds())
+		cookie.Path = "/"
+		http.SetCookie(w, cookie)
 
-			if _, err = registry.get(ses_id); err != nil { // если отсутствует, то ок
-				break
-			}
-		}
-
-		if err == nil { // если существует сессия
-			return nil, errors.New("not available")
-		}
+		return ses
 	}
 
-	cookie := http.Cookie{Name: sid, Value: ses_id, Path: "/", HttpOnly: true, MaxAge: int(maxlifetime.Seconds())}
-	http.SetCookie(w, &cookie)
+	cookie.MaxAge = int(maxlifetime.Seconds())
+	http.SetCookie(w, cookie)
 
-	registry.add(ses_id, session)
-
-	return session, nil
+	return ses
 }
 
 /*
