@@ -3,7 +3,6 @@ package sessions
 import (
 	"crypto/rand"
 	"encoding/base64"
-	//"errors"
 	"io"
 	"sync"
 	"time"
@@ -19,6 +18,13 @@ var registry *reg
 func init() {
 	registry = new(reg)
 	registry.sessions = make(map[string]*Session)
+
+	ticker := time.NewTicker(time.Minute)
+	go func() {
+		for {
+			registry.remove_old(<-ticker.C)
+		}
+	}()
 }
 
 func (this *reg) new() (string, *Session) {

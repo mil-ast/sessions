@@ -10,15 +10,6 @@ var (
 	maxlifetime time.Duration = time.Minute * 20
 )
 
-func init() {
-	ticker := time.NewTicker(time.Minute)
-	go func() {
-		for {
-			registry.remove_old(<-ticker.C)
-		}
-	}()
-}
-
 func SetMaxLifeTime(duration time.Duration) time.Duration {
 	if duration > time.Second {
 		maxlifetime = duration
